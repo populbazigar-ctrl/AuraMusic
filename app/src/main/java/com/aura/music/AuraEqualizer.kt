@@ -2,137 +2,116 @@ package com.aura.music
 
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
-import androidx.media3.common.C
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-data class FrequencyBandState(
+data class EqualizerBandState(
     val bandIndex: Short,
     val centerFreqHz: Int,
-    val currentLevelMb: Short,
     val minLevelMb: Short,
-    val maxLevelMb: Short
+    val maxLevelMb: Short,
+    val currentLevelMb: Short
 )
 
 data class EqualizerState(
     val isSupported: Boolean = false,
     val isEnabled: Boolean = false,
-    val bands: List<FrequencyBandState> = emptyList(),
+    val bands: List<EqualizerBandState> = emptyList(),
     val bassBoostSupported: Boolean = false,
     val bassStrength: Short = 0,
-    val message: String = "Start playing a track to activate audio effects."
+    val message: String = "Equalizer ready"
 )
 
-class AuraEqualizerManager {
+class AuraEqualizerController {
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
-    private var boundSessionId: Int = C.AUDIO_SESSION_ID_UNSET
-    private var enabledFlag: Boolean = true
 
-    fun bindToAudioSession(sessionId: Int): EqualizerState {
-        if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId <= 0) {
-            return EqualizerState(
-                isSupported = false,
-                isEnabled = false,
-                message = "Play a song first to initialize the hardware audio session."
-            )
+    private val _state = MutableStateFlow(EqualizerState())
+    val state: StateFlow<EqualizerState> = _state.asStateFlow()
+
+    fun attachSession(audioSessionId: Int) {
+        release()
+        if (audioSessionId <= 0) {
+            _state.value = EqualizerState(message = "Invalid audio session ID")
+            return
         }
-        if (sessionId == boundSessionId && equalizer != null) {
-            return snapshotState()
-        }
-
-        releaseEffects()
-        boundSessionId = sessionId
-
         try {
-            val eq = Equalizer(0, sessionId)
-            eq.enabled = enabledFlag
+            val eq = Equalizer(0, audioSessionId).apply { enabled = true }
+            val bb = BassBoost(0, audioSessionId).apply { enabled = true }
+
             equalizer = eq
-        } catch (e: Exception) {
-            equalizer = null
-        }
+            bassBoost = bb
 
-        try {
-            val bass = BassBoost(0, sessionId)
-            if (bass.strengthSupported) {
-                bass.enabled = enabledFlag
-                bassBoost = bass
-            } else {
-                bass.release()
-                bassBoost = null
-            }
-        } catch (e: Exception) {
-            bassBoost = null
-        }
-
-        return snapshotState()
-    }
-
-    fun setEffectsEnabled(enabled: Boolean): EqualizerState {
-        enabledFlag = enabled
-        runCatching { equalizer?.enabled = enabled }
-        runCatching { bassBoost?.enabled = enabled }
-        return snapshotState()
-    }
-
-    fun setBandLevel(bandIndex: Short, levelMb: Short): EqualizerState {
-        runCatching { equalizer?.setBandLevel(bandIndex, levelMb) }
-        return snapshotState()
-    }
-
-    fun setBassStrength(strength: Short): EqualizerState {
-        val coerced = strength.coerceIn(0, 1000)
-        runCatching { bassBoost?.setStrength(coerced) }
-        return snapshotState()
-    }
-
-    fun snapshotState(): EqualizerState {
-        val eq = equalizer
-            ?: return EqualizerState(
-                isSupported = false,
-                isEnabled = false,
-                message = "Hardware Equalizer is not available on this device or session."
-            )
-
-        return try {
-            val range = eq.bandLevelRange
-            val minMb = range[0]
-            val maxMb = range[1]
-            val count = eq.numberOfBands.toInt()
-            val bandList = (0 until count).map { i ->
-                val idx = i.toShort()
-                FrequencyBandState(
-                    bandIndex = idx,
-                    centerFreqHz = eq.getCenterFreq(idx) / 1000,
-                    currentLevelMb = eq.getBandLevel(idx),
-                    minLevelMb = minMb,
-                    maxLevelMb = maxMb
+            val numBands = eq.numberOfBands
+            val bandList = mutableListOf<EqualizerBandState>()
+            for (i in 0 until numBands) {
+                val center = eq.getCenterFreq(i.toShort()) / 1000
+                val range = eq.bandLevelRange
+                val current = eq.getBandLevel(i.toShort())
+                bandList.add(
+                    EqualizerBandState(
+                        bandIndex = i.toShort(),
+                        centerFreqHz = center,
+                        minLevelMb = range[0],
+                        maxLevelMb = range[1],
+                        currentLevelMb = current
+                    )
                 )
             }
-            val bass = bassBoost
-            val bassOk = bass != null && runCatching { bass.strengthSupported }.getOrDefault(false)
-            val bassVal = if (bassOk) runCatching { bass?.roundedStrength ?: 0 }.getOrDefault(0) else 0
 
-            EqualizerState(
+            val bassSupported = bb.roundedSupported
+            val bassStr = if (bassSupported) bb.roundedStrength else 0
+
+            _state.value = EqualizerState(
                 isSupported = true,
-                isEnabled = eq.enabled,
+                isEnabled = true,
                 bands = bandList,
-                bassBoostSupported = bassOk,
-                bassStrength = bassVal,
-                message = if (bassOk) "Equalizer & Bass Boost ready" else "Equalizer active (Bass Boost unsupported on device)"
+                bassBoostSupported = bassSupported,
+                bassStrength = bassStr,
+                message = "Equalizer active"
             )
         } catch (e: Exception) {
-            EqualizerState(
+            _state.value = EqualizerState(
                 isSupported = false,
-                isEnabled = false,
-                message = "Audio effect error: ${e.localizedMessage ?: "Unsupported hardware"}"
+                message = "Equalizer not supported on this device/session"
             )
         }
     }
 
-    fun releaseEffects() {
-        runCatching { equalizer?.release() }
-        runCatching { bassBoost?.release() }
+    fun setEnabled(enabled: Boolean) {
+        runCatching {
+            equalizer?.enabled = enabled
+            bassBoost?.enabled = enabled
+            _state.value = _state.value.copy(isEnabled = enabled)
+        }
+    }
+
+    fun setBandLevel(bandIndex: Short, levelMb: Short) {
+        runCatching {
+            equalizer?.setBandLevel(bandIndex, levelMb)
+            val currentBands = _state.value.bands.map {
+                if (it.bandIndex == bandIndex) it.copy(currentLevelMb = levelMb) else it
+            }
+            _state.value = _state.value.copy(bands = currentBands)
+        }
+    }
+
+    fun setBassStrength(strength: Short) {
+        runCatching {
+            if (bassBoost?.roundedSupported == true) {
+                bassBoost?.setStrength(strength)
+                _state.value = _state.value.copy(bassStrength = strength)
+            }
+        }
+    }
+
+    fun release() {
+        runCatching {
+            equalizer?.release()
+            bassBoost?.release()
+        }
         equalizer = null
         bassBoost = null
-        boundSessionId = C.AUDIO_SESSION_ID_UNSET
     }
 }
