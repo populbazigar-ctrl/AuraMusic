@@ -1,0 +1,2 @@
+-keep class com.aura.music.** { *; }
+-dontwarn androidx.media3.**
