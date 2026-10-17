@@ -26,31 +26,40 @@ fun AuraVisualizerBar(
     violetAccent: Color,
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "aura_visualizer")
+    val transition = rememberInfiniteTransition(label = "aura_visualizer_smooth")
     val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 6.283185f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            animation = tween(durationMillis = 850, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "wave_phase"
+        label = "wave_phase_smooth"
+    )
+
+    // 4 vibrant multi-colors for ultra-smooth gradient effect
+    val multiColors = listOf(
+        Color(0xFF00E5FF), // Cyan
+        Color(0xFF7B2CBF), // Deep Violet
+        Color(0xFFFF007F), // Neon Pink
+        Color(0xFF39FF14)  // Neon Green
     )
 
     Canvas(modifier = modifier) {
-        val barCount = 28
-        val spacing = size.width / (barCount * 1.6f)
+        val barCount = 32 // Thode aur smooth aur ghane bars
+        val spacing = size.width / (barCount * 1.8f)
         val barWidth = (size.width - (spacing * (barCount - 1))) / barCount
         val maxBarHeight = size.height
 
         for (i in 0 until barCount) {
-            val seed = (i * 0.45f) + (progressMs % 1000L) * 0.002f
+            val seed = (i * 0.35f) + (progressMs % 1000L) * 0.0025f
             val ratio = if (isPlaying) {
                 val wave1 = abs(sin(phase + seed))
-                val wave2 = abs(sin((phase * 1.7f) - i * 0.3f))
-                (0.18f + 0.82f * ((wave1 * 0.65f) + (wave2 * 0.35f))).coerceIn(0.15f, 1f)
+                val wave2 = abs(sin((phase * 1.4f) - i * 0.25f))
+                val wave3 = abs(cos(phase * 0.8f + i * 0.15f))
+                (0.15f + 0.85f * ((wave1 * 0.5f) + (wave2 * 0.3f) + (wave3 * 0.2f))).coerceIn(0.12f, 1f)
             } else {
-                0.14f
+                0.12f
             }
 
             val barHeight = maxBarHeight * ratio
@@ -58,9 +67,7 @@ fun AuraVisualizerBar(
             val y = (maxBarHeight - barHeight) / 2f
 
             drawRoundRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(cyanAccent, violetAccent)
-                ),
+                brush = Brush.verticalGradient(colors = multiColors),
                 topLeft = Offset(x, y),
                 size = Size(barWidth, barHeight),
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
