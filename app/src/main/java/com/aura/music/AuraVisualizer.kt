@@ -37,16 +37,14 @@ fun AuraVisualizerBar(
         label = "wave_phase_smooth"
     )
 
-    // 4 vibrant multi-colors for ultra-smooth gradient effect
     val multiColors = listOf(
         Color(0xFF00E5FF), // Cyan
         Color(0xFF7B2CBF), // Deep Violet
-        Color(0xFFFF007F), // Neon Pink
-        Color(0xFF39FF14)  // Neon Green
+        Color(0xFFFF007F)  // Neon Pink
     )
 
     Canvas(modifier = modifier) {
-        val barCount = 32 // Thode aur smooth aur ghane bars
+        val barCount = 28
         val spacing = size.width / (barCount * 1.8f)
         val barWidth = (size.width - (spacing * (barCount - 1))) / barCount
         val maxBarHeight = size.height
@@ -56,10 +54,9 @@ fun AuraVisualizerBar(
             val ratio = if (isPlaying) {
                 val wave1 = abs(sin(phase + seed))
                 val wave2 = abs(sin((phase * 1.4f) - i * 0.25f))
-                val wave3 = abs(cos(phase * 0.8f + i * 0.15f))
-                (0.15f + 0.85f * ((wave1 * 0.5f) + (wave2 * 0.3f) + (wave3 * 0.2f))).coerceIn(0.12f, 1f)
+                (0.2f + 0.8f * ((wave1 * 0.6f) + (wave2 * 0.4f))).coerceIn(0.15f, 1f)
             } else {
-                0.12f
+                0.15f
             }
 
             val barHeight = maxBarHeight * ratio
